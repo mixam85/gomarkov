@@ -54,3 +54,7 @@ func main() {
 - [Fake Hackernews post generator](/examples/fakernews)
 
 - [Pokemon name generator](/examples/pokenamer)
+
+# Edit
+
+Changes mode from original in order to speed up generation
