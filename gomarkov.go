@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	wr "github.com/mroth/weightedrand"
 	"math/rand"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ type Chain struct {
 	statePool       *spool
 	frequencyMat    map[int]sparseArray
 	frequencyMatSum map[int]int
+	weightedrandMat map[int]wr.Chooser
 	lock            *sync.RWMutex
 }
 
@@ -59,8 +61,14 @@ func (chain *Chain) UnmarshalJSON(b []byte) error {
 	}
 	chain.frequencyMat = obj.FreqMat
 	chain.frequencyMatSum = make(map[int]int, 0)
+	chain.weightedrandMat = make(map[int]wr.Chooser, 0)
 	for i, mat := range chain.frequencyMat {
 		chain.frequencyMatSum[i] = mat.sum()
+		wrmat := make([]wr.Choice, 0)
+		for j, v := range mat {
+			wrmat = append(wrmat, wr.Choice{Item: j, Weight: uint(v)})
+		}
+		chain.weightedrandMat[i] = wr.NewChooser(wrmat...)
 	}
 	chain.lock = new(sync.RWMutex)
 	return nil
@@ -127,13 +135,18 @@ func (chain *Chain) Generate(current NGram) (string, error) {
 	if !currentExists {
 		return "", fmt.Errorf("Unknown ngram %v", current)
 	}
-	arr := chain.frequencyMat[currentIndex]
-	sum := chain.frequencyMatSum[currentIndex]
-	randN := rand.Intn(sum)
-	for i, freq := range arr {
-		randN -= freq
-		if randN <= 0 {
-			return chain.statePool.intMap[i], nil
+	if chain.weightedrandMat != nil {
+		i := chain.weightedrandMat[currentIndex].Pick().(int)
+		return chain.statePool.intMap[i], nil
+	} else {
+		arr := chain.frequencyMat[currentIndex]
+		sum := chain.frequencyMatSum[currentIndex]
+		randN := rand.Intn(sum)
+		for i, freq := range arr {
+			randN -= freq
+			if randN <= 0 {
+				return chain.statePool.intMap[i], nil
+			}
 		}
 	}
 	return "", nil
