@@ -18,10 +18,11 @@ const (
 
 //Chain is a markov chain instance
 type Chain struct {
-	Order        int
-	statePool    *spool
-	frequencyMat map[int]sparseArray
-	lock         *sync.RWMutex
+	Order           int
+	statePool       *spool
+	frequencyMat    map[int]sparseArray
+	frequencyMatSum map[int]int
+	lock            *sync.RWMutex
 }
 
 type chainJSON struct {
@@ -57,6 +58,10 @@ func (chain *Chain) UnmarshalJSON(b []byte) error {
 		intMap:    intMap,
 	}
 	chain.frequencyMat = obj.FreqMat
+	chain.frequencyMatSum = make(map[int]int, 0)
+	for i, mat := range chain.frequencyMat {
+		chain.frequencyMatSum[i] = mat.sum()
+	}
 	chain.lock = new(sync.RWMutex)
 	return nil
 }
@@ -69,6 +74,7 @@ func NewChain(order int) *Chain {
 		intMap:    make(map[int]string),
 	}
 	chain.frequencyMat = make(map[int]sparseArray, 0)
+	chain.frequencyMatSum = make(map[int]int, 0)
 	chain.lock = new(sync.RWMutex)
 	return &chain
 }
@@ -91,6 +97,7 @@ func (chain *Chain) Add(input []string) {
 			chain.frequencyMat[currentIndex] = make(sparseArray, 0)
 		}
 		chain.frequencyMat[currentIndex][nextIndex]++
+		chain.frequencyMatSum[currentIndex]++
 		chain.lock.Unlock()
 	}
 }
@@ -106,7 +113,7 @@ func (chain *Chain) TransitionProbability(next string, current NGram) (float64, 
 		return 0, nil
 	}
 	arr := chain.frequencyMat[currentIndex]
-	sum := float64(arr.sum())
+	sum := float64(chain.frequencyMatSum[currentIndex])
 	freq := float64(arr[nextIndex])
 	return freq / sum, nil
 }
@@ -121,7 +128,7 @@ func (chain *Chain) Generate(current NGram) (string, error) {
 		return "", fmt.Errorf("Unknown ngram %v", current)
 	}
 	arr := chain.frequencyMat[currentIndex]
-	sum := arr.sum()
+	sum := chain.frequencyMatSum[currentIndex]
 	randN := rand.Intn(sum)
 	for i, freq := range arr {
 		randN -= freq
